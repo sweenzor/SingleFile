@@ -24,6 +24,11 @@ Style: ES2025, double quotes, semicolons, Unix line breaks.
 - UI strings via `browser.i18n.getMessage()`
 - Copyright headers on all source files
 
-## No Tests
+## Tests
 
-There is no test suite in this repository currently.
+```bash
+npm test             # Run all tests once
+npm run test:watch   # Run tests in watch mode
+```
+
+Tests live in `test/` and use Vitest. Pure-logic modules are tested (srcset parser, MHTML utilities, yabson serialization, config/download helpers).
