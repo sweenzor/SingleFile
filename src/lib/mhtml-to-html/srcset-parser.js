@@ -62,8 +62,9 @@ function parse(input) {
 
 	function collectCharacters(regEx) {
 		let chars;
-		const match = regEx.exec(input.substring(pos));
-		if (match) {
+		regEx.lastIndex = pos;
+		const match = regEx.exec(input);
+		if (match && match.index === pos) {
 			chars = match[0];
 			pos += chars.length;
 			return chars;
@@ -74,9 +75,9 @@ function parse(input) {
 
 	// (Don"t use \s, to avoid matching non-breaking space)
 	/* eslint-disable no-control-regex */
-	const regexLeadingSpaces = /^[ \t\n\r\u000c]+/;
-	const regexLeadingCommasOrSpaces = /^[, \t\n\r\u000c]+/;
-	const regexLeadingNotSpaces = /^[^ \t\n\r\u000c]+/;
+	const regexLeadingSpaces = /[ \t\n\r\u000c]+/g;
+	const regexLeadingCommasOrSpaces = /[, \t\n\r\u000c]+/g;
+	const regexLeadingNotSpaces = /[^ \t\n\r\u000c]+/g;
 	const regexTrailingCommas = /[,]+$/;
 	const regexNonNegativeInteger = /^\d+$/;
 	/* eslint-enable no-control-regex */

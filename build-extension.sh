@@ -1,31 +1,27 @@
 #!/bin/bash
+set -e
 
-dpkg -s zip &> /dev/null
-if [ $? -ne 0 ]
-then
-    if ! command -v zip &> /dev/null; then
-        echo "Installing zip"
-        sudo apt install zip
+for cmd in zip; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: '$cmd' is required but not installed." >&2
+        exit 1
     fi
-fi
-
-dpkg -s jq &> /dev/null
-if [ $? -ne 0 ]
-then
-    if ! command -v jq &> /dev/null; then
-        echo "Installing jq"
-        sudo apt install jq
-    fi
-fi
+done
 
 npm install
-npm update
 
 npx rollup -c rollup.config.js
 
 zip -r singlefile-extension-source.zip manifest.json package.json _locales src rollup*.js eslint.config.mjs build-extension.sh
 
 rm -f singlefile-extension-firefox.zip
+
+cleanup() {
+    if [ -f config.copy.js ]; then
+        mv config.copy.js src/core/bg/config.js
+    fi
+}
+trap cleanup EXIT
 
 cp src/core/bg/config.js config.copy.js
 node -e "const fs=require('fs');const file='src/core/bg/config.js';const updated=fs.readFileSync(file,'utf8').replace(/forceWebAuthFlow: false/g,'forceWebAuthFlow: true');fs.writeFileSync(file,updated);"

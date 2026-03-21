@@ -357,9 +357,7 @@ function cancel(taskInfo, runNextTasks) {
 				loadDeferredImages: taskInfo.options.loadDeferredImages,
 				loadDeferredImagesKeepZoomLevel: taskInfo.options.loadDeferredImagesKeepZoomLevel
 			}
-		}).catch(() => {
-			// ignored
-		});
+		}).catch(error => console.warn("business:", error.message || error));
 		if (taskInfo.method == "content.autosave") {
 			ui.onEnd(tabId, true);
 		}

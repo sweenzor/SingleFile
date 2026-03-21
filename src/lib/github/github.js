@@ -23,6 +23,8 @@
 
 /* global fetch, btoa, Blob, FileReader, AbortController */
 
+import { splitFilename, extractIndexFilename } from "../storage-util/filename.js";
+
 const EMPTY_STRING = "";
 const CONFLICT_ACTION_SKIP = "skip";
 const CONFLICT_ACTION_UNIQUIFY = "uniquify";
@@ -37,7 +39,6 @@ const GITHUB_API_VERSION = "2022-11-28";
 const EXTENSION_SEPARATOR = ".";
 const INDEX_FILENAME_PREFIX = " (";
 const INDEX_FILENAME_SUFFIX = ")";
-const INDEX_FILENAME_REGEXP = /\s\((\d+)\)$/;
 const ABORT_ERROR_NAME = "AbortError";
 const GET_METHOD = "GET";
 const PUT_METHOD = "PUT";
@@ -101,20 +102,20 @@ async function upload(userName, repositoryName, branch, path, content, options) 
 				sha
 			}));
 			const responseData = await response.json();
-			if (response.status == 422) {
-				if (filenameConflictAction == CONFLICT_ACTION_OVERWRITE) {
+			if (response.status === 422) {
+				if (filenameConflictAction === CONFLICT_ACTION_OVERWRITE) {
 					const response = await fetchContentData(GET_METHOD);
 					const responseData = await response.json();
 					const sha = responseData.sha;
 					return await createContent({ path, content, message, sha });
-				} else if (filenameConflictAction == CONFLICT_ACTION_UNIQUIFY) {
+				} else if (filenameConflictAction === CONFLICT_ACTION_UNIQUIFY) {
 					const { filenameWithoutExtension, extension, indexFilename } = splitFilename(path);
 					options.indexFilename = indexFilename + 1;
 					path = getFilename(filenameWithoutExtension, extension);
 					return await createContent({ path, content, message });
-				} else if (filenameConflictAction == CONFLICT_ACTION_SKIP) {
+				} else if (filenameConflictAction === CONFLICT_ACTION_SKIP) {
 					return responseData;
-				} else if (filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+				} else if (filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 					if (prompt) {
 						path = await prompt(path);
 						if (path) {
@@ -134,7 +135,7 @@ async function upload(userName, repositoryName, branch, path, content, options) 
 				throw new Error(responseData.message);
 			}
 		} catch (error) {
-			if (error.name != ABORT_ERROR_NAME) {
+			if (error.name !== ABORT_ERROR_NAME) {
 				throw error;
 			}
 		}
@@ -147,32 +148,6 @@ async function upload(userName, repositoryName, branch, path, content, options) 
 				signal
 			});
 		}
-	}
-
-	function splitFilename(filename) {
-		let filenameWithoutExtension = filename;
-		let extension = EMPTY_STRING;
-		const indexExtensionSeparator = filename.lastIndexOf(EXTENSION_SEPARATOR);
-		if (indexExtensionSeparator > -1) {
-			filenameWithoutExtension = filename.substring(0, indexExtensionSeparator);
-			extension = filename.substring(indexExtensionSeparator + 1);
-		}
-		let indexFilename;
-		({ filenameWithoutExtension, indexFilename } = extractIndexFilename(filenameWithoutExtension));
-		return { filenameWithoutExtension, extension, indexFilename };
-	}
-
-	function extractIndexFilename(filenameWithoutExtension) {
-		const indexFilenameMatch = filenameWithoutExtension.match(INDEX_FILENAME_REGEXP);
-		let indexFilename = 0;
-		if (indexFilenameMatch && indexFilenameMatch.length > 1) {
-			const parsedIndexFilename = Number(indexFilenameMatch[indexFilenameMatch.length - 1]);
-			if (!Number.isNaN(parsedIndexFilename)) {
-				indexFilename = parsedIndexFilename;
-				filenameWithoutExtension = filenameWithoutExtension.replace(INDEX_FILENAME_REGEXP, EMPTY_STRING);
-			}
-		}
-		return { filenameWithoutExtension, indexFilename };
 	}
 
 	function getFilename(filenameWithoutExtension, extension) {

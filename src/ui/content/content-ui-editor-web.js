@@ -655,7 +655,7 @@ import { convert } from "../../lib/mhtml-to-html/mod.js";
 			let element = target, matchedParent, parents = [];
 			do {
 				const boundingRect = element.getBoundingClientRect();
-				if (element.parentElement && !element.parentElement.tagName.toLowerCase() != NOTE_TAGNAME && !element.classList.contains(MASK_CLASS)) {
+				if (element.parentElement && element.parentElement.tagName.toLowerCase() !== NOTE_TAGNAME && !element.classList.contains(MASK_CLASS)) {
 					const parentBoundingRect = element.parentElement.getBoundingClientRect();
 					matchedParent = Math.abs(parentBoundingRect[property] - boundingRect[property]) <= SELECT_PX_THRESHOLD;
 					if (matchedParent) {

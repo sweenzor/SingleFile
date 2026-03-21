@@ -3,6 +3,9 @@ import js from "@eslint/js";
 export default [
 	js.configs.recommended,
 	{
+		ignores: ["src/lib/readability/**"]
+	},
+	{
 		languageOptions: {
 			ecmaVersion: 2025,
 			sourceType: "module",
@@ -25,7 +28,10 @@ export default [
 			],
 			"no-console": [
 				"warn"
-			]
+			],
+			"eqeqeq": ["error", "always"],
+			"prefer-const": "warn",
+			"no-var": "warn",
 		}
 	}
 ];

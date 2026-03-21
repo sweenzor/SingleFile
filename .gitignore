@@ -1,3 +1,12 @@
 /.vscode/
 **/node_modules/
 .idea/
+.DS_Store
+*.swp
+*.swo
+*~
+config.copy.js
+singlefile-extension-*.zip
+lib/wasm/
+.env
+.env.local

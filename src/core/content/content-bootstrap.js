@@ -176,8 +176,8 @@ function init() {
 	if (previousLocationHref != location.href && !singlefile.pageInfo.processing) {
 		pageAutoSaved = false;
 		previousLocationHref = location.href;
-		browser.runtime.sendMessage({ method: "tabs.init", savedPageDetected: detectSavedPage(document) }).catch(() => { });
-		browser.runtime.sendMessage({ method: "ui.processInit" }).catch(() => { });
+		browser.runtime.sendMessage({ method: "tabs.init", savedPageDetected: detectSavedPage(document) }).catch(error => console.warn("content-bootstrap:", error.message || error));
+		browser.runtime.sendMessage({ method: "ui.processInit" }).catch(error => console.warn("content-bootstrap:", error.message || error));
 	}
 }
 

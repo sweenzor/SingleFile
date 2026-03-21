@@ -70,7 +70,7 @@ class Dropbox {
 					"&grant_type=refresh_token" +
 					"&client_secret=" + this.clientKey
 			});
-			if (httpResponse.status == 400) {
+			if (httpResponse.status === 400) {
 				throw new Error("unknown_token");
 			}
 			const response = await getJSON(httpResponse);
@@ -98,7 +98,7 @@ class Dropbox {
 				await httpResponse.text();
 			}
 			catch (error) {
-				if (error.message != "invalid_token") {
+				if (error.message !== "invalid_token") {
 					throw error;
 				}
 			}
@@ -156,7 +156,7 @@ class MediaUploader {
 		}));
 		const response = await getJSON(httpListResponse);
 		if (response.matches.length) {
-			if (this.filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+			if (this.filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 				if (this.prompt) {
 					const name = await this.prompt(this.metadata.name);
 					if (name) {
@@ -167,7 +167,7 @@ class MediaUploader {
 				} else {
 					this.filenameConflictAction = CONFLICT_ACTION_UNIQUIFY;
 				}
-			} else if (this.filenameConflictAction == CONFLICT_ACTION_SKIP) {
+			} else if (this.filenameConflictAction === CONFLICT_ACTION_SKIP) {
 				return response;
 			}
 		}
@@ -216,11 +216,11 @@ async function initAuth(dropbox, options) {
 	try {
 		options.extractAuthCode(browser.identity.getRedirectURL())
 			.then(authCode => code = authCode)
-			.catch(() => { /* ignored */ });
+			.catch(error => console.warn("dropbox:", error.message || error));
 		return await options.launchWebAuthFlow({ url: dropbox.authURL });
 	}
 	catch (error) {
-		if (error.message && (error.message == "code_required" || error.message.includes("access"))) {
+		if (error.message && (error.message === "code_required" || error.message.includes("access"))) {
 			if (code) {
 				options.code = code;
 				return await authFromCode(dropbox, options);
@@ -251,7 +251,7 @@ async function sendFile(mediaUploader) {
 					session_id: mediaUploader.sessionId,
 					offset: mediaUploader.offset
 				},
-				close: end == mediaUploader.file.size
+				close: end === mediaUploader.file.size
 			})
 		},
 		body: content
@@ -259,7 +259,7 @@ async function sendFile(mediaUploader) {
 	if (mediaUploader.onProgress && !mediaUploader.cancelled) {
 		mediaUploader.onProgress(mediaUploader.offset + mediaUploader.chunkSize, mediaUploader.file.size);
 	}
-	if (httpAppendResponse.status == 200) {
+	if (httpAppendResponse.status === 200) {
 		mediaUploader.offset = end;
 		if (mediaUploader.offset < mediaUploader.file.size) {
 			return sendFile(mediaUploader);
@@ -281,15 +281,15 @@ async function sendFile(mediaUploader) {
 				},
 				commit: {
 					path,
-					mode: mediaUploader.filenameConflictAction == CONFLICT_ACTION_OVERWRITE ? "overwrite" : "add",
-					autorename: mediaUploader.filenameConflictAction == CONFLICT_ACTION_UNIQUIFY
+					mode: mediaUploader.filenameConflictAction === CONFLICT_ACTION_OVERWRITE ? "overwrite" : "add",
+					autorename: mediaUploader.filenameConflictAction === CONFLICT_ACTION_UNIQUIFY
 				}
 			})
 		}
 	});
-	if (httpFinishResponse.status == 200) {
+	if (httpFinishResponse.status === 200) {
 		return getJSON(httpFinishResponse);
-	} else if (httpFinishResponse.status == 409 && mediaUploader.filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+	} else if (httpFinishResponse.status === 409 && mediaUploader.filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 		mediaUploader.offset = 0;
 		return mediaUploader.upload();
 	} else {
@@ -308,9 +308,9 @@ async function getJSON(httpResponse) {
 }
 
 function getResponse(httpResponse) {
-	if (httpResponse.status == 200) {
+	if (httpResponse.status === 200) {
 		return httpResponse;
-	} else if (httpResponse.status == 401) {
+	} else if (httpResponse.status === 401) {
 		throw new Error("invalid_token");
 	} else {
 		throw new Error("unknown_error (" + httpResponse.status + ")");

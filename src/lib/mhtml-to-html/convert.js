@@ -186,6 +186,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
     let canonicalLinkElement;
     const stylesheets = {};
     const missingResources = [];
+    const missingResourceIds = new Set();
     const removedNodes = [];
     const favicons = [];
     let title;
@@ -205,7 +206,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                     }
                     const style = child.getAttribute(STYLE_ATTRIBUTE);
                     if (style) {
-                        const declarations = replaceStylesheetUrls(resources, base, { data: style }, { context: DECLARATION_LIST_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources);
+                        const declarations = replaceStylesheetUrls(resources, base, { data: style }, { context: DECLARATION_LIST_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources, fetchMissingResources && missingResourceIds);
                         if (!fetchMissingResources) {
                             child.setAttribute(STYLE_ATTRIBUTE, declarations);
                         }
@@ -233,7 +234,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                         base = index;
                                     }
                                 }
-                                const stylesheet = replaceStylesheetUrls(resources, base, resource, { context: STYLESHEET_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources);
+                                const stylesheet = replaceStylesheetUrls(resources, base, resource, { context: STYLESHEET_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources, fetchMissingResources && missingResourceIds);
                                 if (!fetchMissingResources) {
                                     const styleElement = document.createElement(STYLE_TAG);
                                     styleElement.type = STYLESHEET_CONTENT_TYPE;
@@ -250,7 +251,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                     child.replaceWith(styleElement);
                                 }
                             } else if (fetchMissingResources) {
-                                addMissingResource(missingResources, href);
+                                addMissingResource(missingResources, missingResourceIds, href);
                             } else {
                                 unfoundResources.add(href);
                                 setAttribute(child, HREF_ATTRIBUTE, href);
@@ -274,7 +275,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                     favicons.push({ href: resourceURI, media, type, sizes, originalHref: href });
                                 }
                             } else if (fetchMissingResources) {
-                                addMissingResource(missingResources, href, BASE64_ENCODING);
+                                addMissingResource(missingResources, missingResourceIds, href, BASE64_ENCODING);
                             } else {
                                 unfoundResources.add(href);
                                 setAttribute(child, HREF_ATTRIBUTE, href);
@@ -295,7 +296,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                         }
                     }
                 } else if (child.tagName && child.tagName.toUpperCase() === STYLE_TAG) {
-                    const style = replaceStylesheetUrls(resources, base, { data: child.textContent }, { context: STYLESHEET_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources);
+                    const style = replaceStylesheetUrls(resources, base, { data: child.textContent }, { context: STYLESHEET_CONTEXT }, stylesheets, fetchMissingResources && missingResources, unfoundResources, fetchMissingResources && missingResourceIds);
                     if (!fetchMissingResources) {
                         const styleElement = document.createElement(STYLE_TAG);
                         styleElement.type = STYLESHEET_CONTENT_TYPE;
@@ -315,7 +316,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                 setAttribute(child, SRC_ATTRIBUTE, getResourceURI(resource));
                             }
                         } else if (fetchMissingResources) {
-                            addMissingResource(missingResources, src, BASE64_ENCODING);
+                            addMissingResource(missingResources, missingResourceIds, src, BASE64_ENCODING);
                         } else {
                             unfoundResources.add(src);
                             setAttribute(child, SRC_ATTRIBUTE, src);
@@ -333,7 +334,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                         data.url = getResourceURI(resource);
                                     }
                                 } else if (fetchMissingResources) {
-                                    addMissingResource(missingResources, src, BASE64_ENCODING);
+                                    addMissingResource(missingResources, missingResourceIds, src, BASE64_ENCODING);
                                 } else {
                                     unfoundResources.add(src);
                                     data.url = src;
@@ -364,7 +365,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                 setAttribute(child, BACKGROUND_ATTRIBUTE, getResourceURI(resource));
                             }
                         } else if (fetchMissingResources) {
-                            addMissingResource(missingResources, background, BASE64_ENCODING);
+                            addMissingResource(missingResources, missingResourceIds, background, BASE64_ENCODING);
                         } else {
                             unfoundResources.add(background);
                             setAttribute(child, BACKGROUND_ATTRIBUTE, background);
@@ -380,7 +381,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                 setAttribute(child, SRC_ATTRIBUTE, getResourceURI(resource));
                             }
                         } else if (fetchMissingResources) {
-                            addMissingResource(missingResources, src, BASE64_ENCODING);
+                            addMissingResource(missingResources, missingResourceIds, src, BASE64_ENCODING);
                         } else {
                             unfoundResources.add(src);
                             setAttribute(child, SRC_ATTRIBUTE, src);
@@ -421,7 +422,8 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                 }, { DOMParser, enableScripts, fetchMissingResources });
                                 if (fetchMissingResources) {
                                     for (const missingResource of result) {
-                                        if (!missingResources.find(resource => resource.id === missingResource.id)) {
+                                        if (!missingResourceIds.has(missingResource.id)) {
+                                            missingResourceIds.add(missingResource.id);
                                             missingResources.push(missingResource);
                                         }
                                     }
@@ -437,7 +439,7 @@ function convert({ headers, frames, resources, unfoundResources = new Set(), ind
                                 }
                             }
                         } else if (fetchMissingResources) {
-                            addMissingResource(missingResources, src);
+                            addMissingResource(missingResources, missingResourceIds, src);
                         } else {
                             unfoundResources.add(src);
                             setAttribute(child, attribute, src);
@@ -547,7 +549,7 @@ function setAttribute(element, attribute, newValue) {
     }
 }
 
-function replaceStylesheetUrls(resources, base, resource, options = {}, stylesheets, missingResources, unfoundResources) {
+function replaceStylesheetUrls(resources, base, resource, options = {}, stylesheets, missingResources, unfoundResources, missingResourceIds) {
     let ast;
     if (resource.id !== undefined) {
         if (stylesheets[resource.id]) {
@@ -573,12 +575,12 @@ function replaceStylesheetUrls(resources, base, resource, options = {}, styleshe
                         if (!missingResources) {
                             resource.used = true;
                             if (isStylesheet(resource.contentType)) {
-                                resource.data = replaceStylesheetUrls(resources, resource.id, resource, { context: STYLESHEET_CONTEXT }, stylesheets, missingResources, unfoundResources);
+                                resource.data = replaceStylesheetUrls(resources, resource.id, resource, { context: STYLESHEET_CONTEXT }, stylesheets, missingResources, unfoundResources, missingResourceIds);
                             }
                             node.value = getOriginalUrlFunction(id, getResourceURI(resource));
                         }
                     } else if (missingResources) {
-                        addMissingResource(missingResources, id, BASE64_ENCODING);
+                        addMissingResource(missingResources, missingResourceIds, id, BASE64_ENCODING);
                     } else {
                         unfoundResources.add(id);
                         node.value = getOriginalUrlFunction(id);
@@ -590,13 +592,13 @@ function replaceStylesheetUrls(resources, base, resource, options = {}, styleshe
                     const id = resolvePath(path, base);
                     const resource = getResource(resources, id, path);
                     if (resource) {
-                        resource.data = replaceStylesheetUrls(resources, resource.id, resource, { context: STYLESHEET_CONTEXT }, stylesheets, missingResources, unfoundResources);
+                        resource.data = replaceStylesheetUrls(resources, resource.id, resource, { context: STYLESHEET_CONTEXT }, stylesheets, missingResources, unfoundResources, missingResourceIds);
                         if (!missingResources) {
                             resource.used = true;
                             node.prelude.children.first.value = getOriginalUrlFunction(id, getResourceURI(resource));
                         }
                     } else if (missingResources) {
-                        addMissingResource(missingResources, id);
+                        addMissingResource(missingResources, missingResourceIds, id);
                     } else {
                         unfoundResources.add(id);
                         node.prelude.children.first.value = getOriginalUrlFunction(id);
@@ -627,8 +629,9 @@ function getResource(resources, id, rawId) {
     return resource;
 }
 
-function addMissingResource(missingResources, id, transferEncoding) {
-    if ((id.startsWith(HTTP_PROTOCOL) || id.startsWith(HTTPS_PROTOCOL) || id.startsWith(URN_PROTOCOL)) && !missingResources.find(resource => resource.id === id)) {
+function addMissingResource(missingResources, missingResourceIds, id, transferEncoding) {
+    if ((id.startsWith(HTTP_PROTOCOL) || id.startsWith(HTTPS_PROTOCOL) || id.startsWith(URN_PROTOCOL)) && !missingResourceIds.has(id)) {
+        missingResourceIds.add(id);
         missingResources.push({ id, transferEncoding });
     }
 }

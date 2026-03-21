@@ -23,6 +23,8 @@
 
 /* global fetch, btoa, AbortController */
 
+import { splitFilename, extractIndexFilename } from "../storage-util/filename.js";
+
 const EMPTY_STRING = "";
 const CONFLICT_ACTION_SKIP = "skip";
 const CONFLICT_ACTION_UNIQUIFY = "uniquify";
@@ -36,7 +38,6 @@ const EXTENSION_SEPARATOR = ".";
 const ERROR_PREFIX_MESSAGE = "Error ";
 const INDEX_FILENAME_PREFIX = " (";
 const INDEX_FILENAME_SUFFIX = ")";
-const INDEX_FILENAME_REGEXP = /\s\((\d+)\)$/;
 const ABORT_ERROR_NAME = "AbortError";
 const HEAD_METHOD = "HEAD";
 const PUT_METHOD = "PUT";
@@ -83,9 +84,9 @@ async function upload(filename, content, options) {
 	const { authorization, filenameConflictAction, prompt, signal, preventRetry } = options;
 	let { url } = options;
 	try {
-		if (filenameConflictAction == CONFLICT_ACTION_OVERWRITE) {
+		if (filenameConflictAction === CONFLICT_ACTION_OVERWRITE) {
 			let response = await sendRequest(filename, PUT_METHOD, content);
-			if (response.status == CREATED_STATUS) {
+			if (response.status === CREATED_STATUS) {
 				return response;
 			} else if (response.status >= MIN_ERROR_STATUS) {
 				response = await sendRequest(filename, DELETE_METHOD);
@@ -96,18 +97,18 @@ async function upload(filename, content, options) {
 			}
 		} else {
 			let response = await sendRequest(filename, HEAD_METHOD);
-			if (response.status == FOUND_STATUS) {
-				if (filenameConflictAction == CONFLICT_ACTION_UNIQUIFY || (filenameConflictAction == CONFLICT_ACTION_PROMPT && !prompt)) {
+			if (response.status === FOUND_STATUS) {
+				if (filenameConflictAction === CONFLICT_ACTION_UNIQUIFY || (filenameConflictAction === CONFLICT_ACTION_PROMPT && !prompt)) {
 					const { filenameWithoutExtension, extension, indexFilename } = splitFilename(filename);
 					options.indexFilename = indexFilename + 1;
 					return await upload(getFilename(filenameWithoutExtension, extension), content, options);
-				} else if (filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+				} else if (filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 					filename = await prompt(filename);
 					return filename ? upload(filename, content, options) : response;
-				} else if (filenameConflictAction == CONFLICT_ACTION_SKIP) {
+				} else if (filenameConflictAction === CONFLICT_ACTION_SKIP) {
 					return response;
 				}
-			} else if (response.status == NOT_FOUND_STATUS) {
+			} else if (response.status === NOT_FOUND_STATUS) {
 				response = await sendRequest(filename, PUT_METHOD, content);
 				if (response.status >= MIN_ERROR_STATUS && !preventRetry) {
 					if (filename.includes(DIRECTORY_SEPARATOR)) {
@@ -125,7 +126,7 @@ async function upload(filename, content, options) {
 			}
 		}
 	} catch (error) {
-		if (error.name != ABORT_ERROR_NAME) {
+		if (error.name !== ABORT_ERROR_NAME) {
 			throw error;
 		}
 	}
@@ -138,32 +139,6 @@ async function upload(filename, content, options) {
 			headers[CONTENT_TYPE_HEADER] = HTML_CONTENT_TYPE;
 		}
 		return fetch(url + path, { method, headers, signal, body, credentials: CREDENTIALS_PARAMETER });
-	}
-
-	function splitFilename(filename) {
-		let filenameWithoutExtension = filename;
-		let extension = EMPTY_STRING;
-		const indexExtensionSeparator = filename.lastIndexOf(EXTENSION_SEPARATOR);
-		if (indexExtensionSeparator > -1) {
-			filenameWithoutExtension = filename.substring(0, indexExtensionSeparator);
-			extension = filename.substring(indexExtensionSeparator + 1);
-		}
-		let indexFilename;
-		({ filenameWithoutExtension, indexFilename } = extractIndexFilename(filenameWithoutExtension));
-		return { filenameWithoutExtension, extension, indexFilename };
-	}
-
-	function extractIndexFilename(filenameWithoutExtension) {
-		const indexFilenameMatch = filenameWithoutExtension.match(INDEX_FILENAME_REGEXP);
-		let indexFilename = 0;
-		if (indexFilenameMatch && indexFilenameMatch.length > 1) {
-			const parsedIndexFilename = Number(indexFilenameMatch[indexFilenameMatch.length - 1]);
-			if (!Number.isNaN(parsedIndexFilename)) {
-				indexFilename = parsedIndexFilename;
-				filenameWithoutExtension = filenameWithoutExtension.replace(INDEX_FILENAME_REGEXP, EMPTY_STRING);
-			}
-		}
-		return { filenameWithoutExtension, indexFilename };
 	}
 
 	function getFilename(filenameWithoutExtension, extension) {
@@ -180,7 +155,7 @@ async function upload(filename, content, options) {
 			if (filenamePart) {
 				path += filenamePart;
 				const response = await sendRequest(path, PROPFIND_METHOD);
-				if (response.status == NOT_FOUND_STATUS) {
+				if (response.status === NOT_FOUND_STATUS) {
 					const response = await sendRequest(path, MKCOL_METHOD);
 					if (response.status >= MIN_ERROR_STATUS) {
 						throw new Error(ERROR_PREFIX_MESSAGE + response.status);

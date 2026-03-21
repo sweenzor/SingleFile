@@ -78,7 +78,7 @@ class GDrive {
 					"&grant_type=refresh_token" +
 					"&client_secret=" + this.clientKey
 			});
-			if (httpResponse.status == 400) {
+			if (httpResponse.status === 400) {
 				throw new Error("unknown_token");
 			}
 			const response = await getJSON(httpResponse);
@@ -122,7 +122,7 @@ class GDrive {
 				await getJSON(httpResponse);
 			}
 			catch (error) {
-				if (error.message != "invalid_token") {
+				if (error.message !== "invalid_token") {
 					throw error;
 				}
 			}
@@ -153,7 +153,7 @@ class GDrive {
 			await uploader.upload();
 		}
 		catch (error) {
-			if (error.message == "path_not_found" && retry) {
+			if (error.message === "path_not_found" && retry) {
 				this.folderIds.clear();
 				return this.upload(fullFilename, blob, options, setCancelCallback);
 			} else {
@@ -190,11 +190,11 @@ class MediaUploader {
 		}));
 		const response = await httpListResponse.json();
 		if (response.files.length) {
-			if (this.filenameConflictAction == CONFLICT_ACTION_OVERWRITE) {
+			if (this.filenameConflictAction === CONFLICT_ACTION_OVERWRITE) {
 				method = "PATCH";
 				fileId = response.files[0].id;
 				this.metadata.parents = null;
-			} else if (this.filenameConflictAction == CONFLICT_ACTION_UNIQUIFY) {
+			} else if (this.filenameConflictAction === CONFLICT_ACTION_UNIQUIFY) {
 				let nameWithoutExtension = this.metadata.name;
 				let extension = "";
 				const dotIndex = this.metadata.name.lastIndexOf(".");
@@ -215,7 +215,7 @@ class MediaUploader {
 				} else {
 					this.metadata.name = name;
 				}
-			} else if (this.filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+			} else if (this.filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 				if (this.prompt) {
 					const name = await this.prompt(this.metadata.name);
 					if (name) {
@@ -228,7 +228,7 @@ class MediaUploader {
 					this.filenameConflictAction = CONFLICT_ACTION_UNIQUIFY;
 					return this.upload(indexFilename);
 				}
-			} else if (this.filenameConflictAction == CONFLICT_ACTION_SKIP) {
+			} else if (this.filenameConflictAction === CONFLICT_ACTION_SKIP) {
 				return response;
 			}
 		}
@@ -285,14 +285,14 @@ async function initAuth(gdrive, options) {
 		} else if (options.launchWebAuthFlow) {
 			options.extractAuthCode(browser.identity.getRedirectURL())
 				.then(authCode => code = authCode)
-				.catch(() => { /* ignored */ });
+				.catch(error => console.warn("gdrive:", error.message || error));
 			return await options.launchWebAuthFlow({ url: gdrive.authURL });
 		} else {
 			throw new Error("auth_not_supported");
 		}
 	}
 	catch (error) {
-		if (error.message && (error.message == "code_required" || error.message.includes("access"))) {
+		if (error.message && (error.message === "code_required" || error.message.includes("access"))) {
 			if (code) {
 				options.code = code;
 				return await authFromCode(gdrive, options);
@@ -332,7 +332,7 @@ async function getParentFolderId(gdrive, filename, retry = true) {
 					parentFolderId = await getOrCreateFolder(gdrive, folderName, parentFolderId);
 					gdrive.folderIds.set(fullFolderName, parentFolderId);
 				} catch (error) {
-					if (error.message == "path_not_found" && retry) {
+					if (error.message === "path_not_found" && retry) {
 						gdrive.folderIds.clear();
 						return getParentFolderId(gdrive, filename, false);
 					} else {
@@ -401,9 +401,9 @@ async function sendFile(mediaUploader) {
 	if (mediaUploader.onProgress && !mediaUploader.cancelled) {
 		mediaUploader.onProgress(mediaUploader.offset + mediaUploader.chunkSize, mediaUploader.file.size);
 	}
-	if (httpResponse.status == 200 || httpResponse.status == 201) {
+	if (httpResponse.status === 200 || httpResponse.status === 201) {
 		return httpResponse.json();
-	} else if (httpResponse.status == 308) {
+	} else if (httpResponse.status === 308) {
 		const range = httpResponse.headers.get("Range");
 		if (range) {
 			mediaUploader.offset = parseInt(range.match(/\d+/g).pop(), 10) + 1;
@@ -429,11 +429,11 @@ async function getJSON(httpResponse) {
 }
 
 function getResponse(httpResponse) {
-	if (httpResponse.status == 200) {
+	if (httpResponse.status === 200) {
 		return httpResponse;
-	} else if (httpResponse.status == 404) {
+	} else if (httpResponse.status === 404) {
 		throw new Error("path_not_found");
-	} else if (httpResponse.status == 401) {
+	} else if (httpResponse.status === 401) {
 		throw new Error("invalid_token");
 	} else {
 		throw new Error("unknown_error (" + httpResponse.status + ")");

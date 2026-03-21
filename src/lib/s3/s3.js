@@ -23,6 +23,8 @@
 
 /* global crypto, TextEncoder, fetch, URLSearchParams, AbortController, Response */
 
+import { splitFilename, extractIndexFilename } from "../storage-util/filename.js";
+
 const EMPTY_STRING = "";
 const CONFLICT_ACTION_UNIQUIFY = "uniquify";
 const CONFLICT_ACTION_OVERWRITE = "overwrite";
@@ -30,7 +32,6 @@ const CONFLICT_ACTION_PROMPT = "prompt";
 const EXTENSION_SEPARATOR = ".";
 const INDEX_FILENAME_PREFIX = " (";
 const INDEX_FILENAME_SUFFIX = ")";
-const INDEX_FILENAME_REGEXP = /\s\((\d+)\)$/;
 const ABORT_ERROR_NAME = "AbortError";
 const S3_SERVICE = "s3";
 const S3_DOMAIN = S3_SERVICE + ".amazonaws.com";
@@ -49,25 +50,25 @@ class S3 {
 		this.controller = new AbortController();
 		options.signal = this.controller.signal;
 		try {
-			if (filenameConflictAction == CONFLICT_ACTION_OVERWRITE) {
+			if (filenameConflictAction === CONFLICT_ACTION_OVERWRITE) {
 				return this.api.putObject({ path }, { body: await getUint8Array(blob) });
 			} else {
 				let response;
 				if (this.headObjectSupported) {
 					response = await this.api.headObject({ path }, options);
 				}
-				if (!this.headObjectSupported || response.status == 403) {
+				if (!this.headObjectSupported || response.status === 403) {
 					this.headObjectSupported = false;
 					if (this.listObjectsSupported) {
 						response = await this.api.listObjects({ path }, options);
 					}
-					if (!this.listObjectsSupported || response.status == 403) {
+					if (!this.listObjectsSupported || response.status === 403) {
 						this.listObjectsSupported = false;
 						response = await this.api.getObject({ path }, options);
 					}
 				}
-				if (response.status == 200) {
-					if (filenameConflictAction == CONFLICT_ACTION_PROMPT) {
+				if (response.status === 200) {
+					if (filenameConflictAction === CONFLICT_ACTION_PROMPT) {
 						if (prompt) {
 							path = await prompt(path);
 							if (path) {
@@ -79,13 +80,13 @@ class S3 {
 							options.filenameConflictAction = CONFLICT_ACTION_UNIQUIFY;
 							return this.upload(path, blob, options);
 						}
-					} else if (filenameConflictAction == CONFLICT_ACTION_UNIQUIFY) {
+					} else if (filenameConflictAction === CONFLICT_ACTION_UNIQUIFY) {
 						const { filenameWithoutExtension, extension, indexFilename } = splitFilename(path);
 						options.indexFilename = indexFilename + 1;
 						path = getFilename(filenameWithoutExtension, options.indexFilename, extension);
 						return this.upload(path, blob, options);
 					}
-				} else if (response.status == 404) {
+				} else if (response.status === 404) {
 					blob = new Uint8Array(await blob.arrayBuffer());
 					return this.api.putObject({ path }, { body: await getUint8Array(blob) });
 				} else {
@@ -93,7 +94,7 @@ class S3 {
 				}
 			}
 		} catch (error) {
-			if (error.name != ABORT_ERROR_NAME) {
+			if (error.name !== ABORT_ERROR_NAME) {
 				throw error;
 			}
 		}
@@ -108,32 +109,6 @@ class S3 {
 
 async function getUint8Array(blob) {
 	return new Uint8Array(await new Response(blob).arrayBuffer());
-}
-
-function splitFilename(filename) {
-	let filenameWithoutExtension = filename;
-	let extension = EMPTY_STRING;
-	const indexExtensionSeparator = filename.lastIndexOf(EXTENSION_SEPARATOR);
-	if (indexExtensionSeparator > -1) {
-		filenameWithoutExtension = filename.substring(0, indexExtensionSeparator);
-		extension = filename.substring(indexExtensionSeparator + 1);
-	}
-	let indexFilename;
-	({ filenameWithoutExtension, indexFilename } = extractIndexFilename(filenameWithoutExtension));
-	return { filenameWithoutExtension, extension, indexFilename };
-}
-
-function extractIndexFilename(filenameWithoutExtension) {
-	const indexFilenameMatch = filenameWithoutExtension.match(INDEX_FILENAME_REGEXP);
-	let indexFilename = 0;
-	if (indexFilenameMatch && indexFilenameMatch.length > 1) {
-		const parsedIndexFilename = Number(indexFilenameMatch[indexFilenameMatch.length - 1]);
-		if (!Number.isNaN(parsedIndexFilename)) {
-			indexFilename = parsedIndexFilename;
-			filenameWithoutExtension = filenameWithoutExtension.replace(INDEX_FILENAME_REGEXP, EMPTY_STRING);
-		}
-	}
-	return { filenameWithoutExtension, indexFilename };
 }
 
 function getFilename(filenameWithoutExtension, indexFilename, extension) {

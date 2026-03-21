@@ -179,7 +179,7 @@ function decodeBase64(value, charset) {
         }
         return new TextDecoder(charset).decode(bytes);
     } catch (_) {
-        // eslint-disable-next-line no-unused-vars
+        console.warn("mhtml-to-html/util:", _.message || _);
         return value;
     }
 }
@@ -224,8 +224,8 @@ function parseDOM(asset, contentType = "text/html", DOMParser = globalThis.DOMPa
     let document;
     try {
         document = new DOMParser().parseFromString(asset, contentType);
-        // eslint-disable-next-line no-unused-vars
     } catch (_) {
+        console.warn("mhtml-to-html/util:", _.message || _);
         document = new DOMParser().parseFromString(asset, "text/html");
     }
     return {
@@ -287,9 +287,9 @@ function isMultipartAlternative(contentType) {
 function getBoundary(contentType) {
     const contentTypeParams = contentType.split(";");
     contentTypeParams.shift();
-    const boundaryParam = contentTypeParams.find(param => param.startsWith("boundary="));
+    const boundaryParam = contentTypeParams.find(param => param.trim().startsWith("boundary="));
     if (boundaryParam) {
-        return removeQuotes(boundaryParam.substring(9));
+        return removeQuotes(boundaryParam.trim().substring(9));
     }
 }
 
@@ -337,8 +337,8 @@ function resolvePath(path, base) {
     if (base && !path.startsWith("data:")) {
         try {
             return new URL(path, base).href;
-            // eslint-disable-next-line no-unused-vars
         } catch (_) {
+            console.warn("mhtml-to-html/util:", _.message || _);
             if (path.startsWith("//")) {
                 const protocol = base.match(/^[^:]+/);
                 if (protocol) {

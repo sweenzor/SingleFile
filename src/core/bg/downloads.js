@@ -39,7 +39,7 @@ import { S3 } from "./../../lib/s3/s3.js";
 import { MCP } from "./../../lib/mcp/mcp.js";
 import { download } from "./download-util.js";
 import * as yabson from "./../../lib/yabson/yabson.js";
-import { RestFormApi } from "../../lib/../lib/rest-form-api/index.js";
+import { RestFormApi } from "../../lib/rest-form-api/index.js";
 import { encodeSharpCharacter, getRegExp } from "./config-utils.js";
 
 const partialContents = new Map();

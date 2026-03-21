@@ -4,7 +4,9 @@ const DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024;
 const TYPE_REFERENCE = 0;
 const SPECIAL_TYPES = [TYPE_REFERENCE];
 const EMPTY_SLOT_VALUE = Symbol();
+const MAX_PARSE_DEPTH = 1000;
 
+let parseDepth = 0;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const types = new Array(256);
@@ -172,17 +174,23 @@ async function clone(object, options) {
 
 async function serialize(object, options) {
 	const serializer = getSerializer(object, options);
-	let result = new Uint8Array([]);
+	const chunks = [];
+	let totalLength = 0;
 	for await (const chunk of serializer) {
-		const previousResult = result;
-		result = new Uint8Array(previousResult.length + chunk.length);
-		result.set(previousResult, 0);
-		result.set(chunk, previousResult.length);
+		chunks.push(chunk);
+		totalLength += chunk.length;
+	}
+	const result = new Uint8Array(totalLength);
+	let offset = 0;
+	for (const chunk of chunks) {
+		result.set(chunk, offset);
+		offset += chunk.length;
 	}
 	return result;
 }
 
 async function parse(array) {
+	parseDepth = 0;
 	const parser = getParser();
 	await parser.next(array);
 	const result = await parser.next();
@@ -293,6 +301,9 @@ function getSerializer(value, { chunkSize = DEFAULT_CHUNK_SIZE } = {}) {
 
 async function serializeValue(data, value) {
 	const type = types.findIndex(({ test } = {}) => test && test(value, data));
+	if (type === -1 || !types[type]) {
+		throw new Error("yabson: unsupported type for serialization");
+	}
 	data.addObject(value);
 	await data.append(new Uint8Array([type]));
 	const serialize = types[type].serialize;
@@ -571,17 +582,28 @@ function getParser() {
 }
 
 async function parseValue(data) {
-	const array = await data.consume(1);
-	const parserType = array[0];
-	const parse = types[parserType].parse;
-	const valueId = data.getObjectId();
-	const result = await parse(data);
-	if (parserType != TYPE_REFERENCE && testObject(result)) {
-		await parseSymbols(data, result);
-		await parseOwnProperties(data, result);
+	parseDepth++;
+	if (parseDepth > MAX_PARSE_DEPTH) {
+		throw new Error("yabson: maximum nesting depth exceeded");
 	}
-	data.resolveObject(valueId, result);
-	return result;
+	try {
+		const array = await data.consume(1);
+		const parserType = array[0];
+		if (parserType >= types.length || !types[parserType]) {
+			throw new Error("yabson: invalid type index " + parserType);
+		}
+		const parse = types[parserType].parse;
+		const valueId = data.getObjectId();
+		const result = await parse(data);
+		if (parserType != TYPE_REFERENCE && testObject(result)) {
+			await parseSymbols(data, result);
+			await parseOwnProperties(data, result);
+		}
+		data.resolveObject(valueId, result);
+		return result;
+	} finally {
+		parseDepth--;
+	}
 }
 
 async function parseSymbols(data, value) {
@@ -617,6 +639,9 @@ function parseObject() {
 
 async function parseArray(data) {
 	const length = await parseValue(data);
+	if (!Number.isInteger(length) || length < 0 || length > 0x1FFFFF) {
+		throw new Error("yabson: invalid collection length " + length);
+	}
 	const array = new Array(length);
 	if (length) {
 		await parseNextSlot();
@@ -758,6 +783,9 @@ async function parseBoolean(data) {
 
 async function parseMap(data) {
 	const size = await parseValue(data);
+	if (!Number.isInteger(size) || size < 0 || size > 0x1FFFFF) {
+		throw new Error("yabson: invalid collection length " + size);
+	}
 	const map = new Map();
 	if (size) {
 		await parseNextEntry();
@@ -776,6 +804,9 @@ async function parseMap(data) {
 
 async function parseSet(data) {
 	const size = await parseValue(data);
+	if (!Number.isInteger(size) || size < 0 || size > 0x1FFFFF) {
+		throw new Error("yabson: invalid collection length " + size);
+	}
 	const set = new Set();
 	if (size) {
 		await parseNextEntry();
