@@ -28,7 +28,7 @@
  */
 
 import modConvert from "./convert.js";
-import modParse from "./parse.js";
+import modParse from "./parse-wasm.js";
 
 export { convert, parse };
 

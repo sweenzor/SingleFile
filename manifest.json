@@ -134,7 +134,9 @@
 		"src/lib/readability/Readability-readerable.js",
 		"src/ui/pages/editor-note-web.css",
 		"src/ui/pages/editor-mask-web.css",
-		"src/ui/pages/editor-frame-web.css"
+		"src/ui/pages/editor-frame-web.css",
+		"lib/wasm/mhtml_parser_bg.wasm",
+		"lib/wasm/mhtml_parser.js"
 	],
 	"permissions": [
 		"identity",

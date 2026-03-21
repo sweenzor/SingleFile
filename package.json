@@ -8,7 +8,8 @@
 		"dev": "npx rollup -c rollup.config.dev.js",
 		"build": "./build-extension.sh",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"wasm:build": "docker build -t singlefile-wasm rust/ && docker create --name singlefile-wasm-tmp singlefile-wasm && docker cp singlefile-wasm-tmp:/out/. lib/wasm/ && docker rm singlefile-wasm-tmp"
 	},
 	"type": "module",
 	"dependencies": {
