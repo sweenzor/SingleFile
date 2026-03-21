@@ -102,6 +102,7 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
             );
 
             if let (Some(start), Some(end)) = (index_start_embedded, index_end_data) {
+                let mut res = resource.take().unwrap();
                 res.used = true;
                 // Store the resource, then handle embedded MHTML
                 store_resource(res, &content, result);
@@ -116,7 +117,8 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
                     parse(&mhtml[start..end_adj], result);
                 }
             } else {
-                process_resource(res);
+                let mut res = resource.take().unwrap();
+                process_resource(&mut res);
                 store_resource(res, &content, result);
             }
 
@@ -133,16 +135,15 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
 
 /// Store a resource into result.resources and result.frames.
 fn store_resource(
-    res: &MhtmlResource,
+    res: MhtmlResource,
     content: &std::collections::HashMap<String, String>,
     result: &mut ParseResult,
 ) {
-    let res_clone = res.clone();
     if let Some(content_id) = content.get(CONTENT_ID_HEADER) {
-        result.frames.insert(content_id.clone(), res_clone.clone());
+        result.frames.insert(content_id.clone(), res.clone());
     }
     if !result.resources.contains_key(&res.id) {
-        result.resources.insert(res.id.clone(), res_clone);
+        result.resources.insert(res.id.clone(), res);
     }
 }
 
@@ -245,20 +246,9 @@ fn init_resource_from_values(
     (resource, transfer_encoding)
 }
 
-/// Simple pseudo-random number for generating IDs.
+/// Generate a random u64 using the JS Math.random() API.
 fn js_random_u64() -> u64 {
-    use std::cell::Cell;
-    thread_local! {
-        static STATE: Cell<u64> = Cell::new(0x12345678_9ABCDEF0);
-    }
-    STATE.with(|s| {
-        let mut x = s.get();
-        x ^= x << 13;
-        x ^= x >> 7;
-        x ^= x << 17;
-        s.set(x);
-        x
-    })
+    (js_sys::Math::random() * u64::MAX as f64) as u64
 }
 
 fn parse_resource_data(

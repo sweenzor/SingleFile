@@ -23,43 +23,44 @@ const CHARSET_ATTRIBUTE = "charset";
 const HTTP_EQUIV_ATTRIBUTE = "http-equiv";
 const CONTENT_TYPE_HEADER = "content-type";
 
+let wasmPromise = null;
 let wasmModule = null;
 let wasmLoadFailed = false;
 
-async function loadWasm() {
-	if (wasmModule) {
-		return wasmModule;
+function loadWasm() {
+	if (wasmLoadFailed) return Promise.resolve(null);
+	if (wasmModule) return Promise.resolve(wasmModule);
+	if (!wasmPromise) {
+		wasmPromise = (async () => {
+			try {
+				const wasm = await import("../../lib/wasm/mhtml_parser.js");
+				await wasm.default();
+				wasmModule = wasm;
+				return wasm;
+			} catch (_) {
+				wasmLoadFailed = true;
+				return null;
+			}
+		})();
 	}
-	if (wasmLoadFailed) {
-		return null;
-	}
-	try {
-		const wasm = await import("../../lib/wasm/mhtml_parser.js");
-		await wasm.default();
-		wasmModule = wasm;
-		return wasmModule;
-	} catch (_) {
-		wasmLoadFailed = true;
-		return null;
-	}
+	return wasmPromise;
 }
+
+// Kick off loading immediately
+loadWasm();
 
 export default parse;
 
-function parse(mhtml, { DOMParser } = { DOMParser: globalThis.DOMParser }, context = { resources: {}, frames: {} }) {
+async function parse(mhtml, { DOMParser } = { DOMParser: globalThis.DOMParser }, context = { resources: {}, frames: {} }) {
 	if (typeof mhtml === "string") {
 		mhtml = encodeString(mhtml);
 	}
-
-	if (!wasmModule) {
+	const wasm = await loadWasm();
+	if (!wasm) {
 		return modParseJS(mhtml, { DOMParser }, context);
 	}
-
-	return parseWithWasm(wasmModule, mhtml, DOMParser, context);
+	return parseWithWasm(wasm, mhtml, DOMParser, context);
 }
-
-// Pre-load WASM module eagerly
-loadWasm();
 
 function parseWithWasm(wasm, mhtml, DOMParser, context) {
 	const { resources, frames } = context;
