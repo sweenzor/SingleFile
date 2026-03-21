@@ -1,6 +1,6 @@
 mod mhtml;
 
-use mhtml::types::ParseResult;
+use mhtml::types::{MhtmlResource, ParseResult};
 use wasm_bindgen::prelude::*;
 
 /// Parse MHTML bytes and return structured data.
@@ -18,8 +18,6 @@ pub fn parse_mhtml(mhtml_bytes: &[u8]) -> Result<JsValue, JsValue> {
     let mut result = ParseResult::new();
     mhtml::parse(mhtml_bytes, &mut result);
 
-    // Convert to JS-friendly format using serde-wasm-bindgen
-    // Resource data fields need special handling — convert Vec<u8> to Uint8Array
     let js_obj = js_sys::Object::new();
 
     // Headers
@@ -34,39 +32,10 @@ pub fn parse_mhtml(mhtml_bytes: &[u8]) -> Result<JsValue, JsValue> {
     };
     js_sys::Reflect::set(&js_obj, &JsValue::from_str("index"), &index)?;
 
-    // Resources — convert data fields to Uint8Array
+    // Resources
     let resources_obj = js_sys::Object::new();
     for (key, resource) in &result.resources {
-        let res_obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &res_obj,
-            &JsValue::from_str("id"),
-            &JsValue::from_str(&resource.id),
-        )?;
-        if let Some(ref ct) = resource.content_type {
-            js_sys::Reflect::set(
-                &res_obj,
-                &JsValue::from_str("contentType"),
-                &JsValue::from_str(ct),
-            )?;
-        }
-        if let Some(ref te) = resource.transfer_encoding {
-            js_sys::Reflect::set(
-                &res_obj,
-                &JsValue::from_str("transferEncoding"),
-                &JsValue::from_str(te),
-            )?;
-        }
-        // Data as Uint8Array
-        let data = js_sys::Uint8Array::from(resource.data.as_slice());
-        js_sys::Reflect::set(&res_obj, &JsValue::from_str("data"), &data)?;
-        // used flag
-        js_sys::Reflect::set(
-            &res_obj,
-            &JsValue::from_str("used"),
-            &JsValue::from_bool(resource.used),
-        )?;
-
+        let res_obj = resource_to_js(resource)?;
         js_sys::Reflect::set(&resources_obj, &JsValue::from_str(key), &res_obj)?;
     }
     js_sys::Reflect::set(&js_obj, &JsValue::from_str("resources"), &resources_obj)?;
@@ -74,37 +43,25 @@ pub fn parse_mhtml(mhtml_bytes: &[u8]) -> Result<JsValue, JsValue> {
     // Frames
     let frames_obj = js_sys::Object::new();
     for (key, resource) in &result.frames {
-        let res_obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &res_obj,
-            &JsValue::from_str("id"),
-            &JsValue::from_str(&resource.id),
-        )?;
-        if let Some(ref ct) = resource.content_type {
-            js_sys::Reflect::set(
-                &res_obj,
-                &JsValue::from_str("contentType"),
-                &JsValue::from_str(ct),
-            )?;
-        }
-        if let Some(ref te) = resource.transfer_encoding {
-            js_sys::Reflect::set(
-                &res_obj,
-                &JsValue::from_str("transferEncoding"),
-                &JsValue::from_str(te),
-            )?;
-        }
-        let data = js_sys::Uint8Array::from(resource.data.as_slice());
-        js_sys::Reflect::set(&res_obj, &JsValue::from_str("data"), &data)?;
-        js_sys::Reflect::set(
-            &res_obj,
-            &JsValue::from_str("used"),
-            &JsValue::from_bool(resource.used),
-        )?;
-
+        let res_obj = resource_to_js(resource)?;
         js_sys::Reflect::set(&frames_obj, &JsValue::from_str(key), &res_obj)?;
     }
     js_sys::Reflect::set(&js_obj, &JsValue::from_str("frames"), &frames_obj)?;
 
     Ok(js_obj.into())
+}
+
+fn resource_to_js(resource: &MhtmlResource) -> Result<JsValue, JsValue> {
+    let obj = js_sys::Object::new();
+    js_sys::Reflect::set(&obj, &JsValue::from_str("id"), &JsValue::from_str(&resource.id))?;
+    if let Some(ref ct) = resource.content_type {
+        js_sys::Reflect::set(&obj, &JsValue::from_str("contentType"), &JsValue::from_str(ct))?;
+    }
+    if let Some(ref te) = resource.transfer_encoding {
+        js_sys::Reflect::set(&obj, &JsValue::from_str("transferEncoding"), &JsValue::from_str(te))?;
+    }
+    let data = js_sys::Uint8Array::from(resource.data.as_slice());
+    js_sys::Reflect::set(&obj, &JsValue::from_str("data"), &data)?;
+    js_sys::Reflect::set(&obj, &JsValue::from_str("used"), &JsValue::from_bool(resource.used))?;
+    Ok(obj.into())
 }

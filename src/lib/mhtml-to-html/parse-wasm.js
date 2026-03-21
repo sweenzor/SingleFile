@@ -51,20 +51,11 @@ function parse(mhtml, { DOMParser } = { DOMParser: globalThis.DOMParser }, conte
 		mhtml = encodeString(mhtml);
 	}
 
-	let wasm;
-	try {
-		// Attempt synchronous access if already loaded
-		wasm = wasmModule;
-	} catch (_) {
-		wasm = null;
-	}
-
-	if (!wasm) {
-		// Fall back to pure-JS parser
+	if (!wasmModule) {
 		return modParseJS(mhtml, { DOMParser }, context);
 	}
 
-	return parseWithWasm(wasm, mhtml, DOMParser, context);
+	return parseWithWasm(wasmModule, mhtml, DOMParser, context);
 }
 
 // Pre-load WASM module eagerly
@@ -77,54 +68,51 @@ function parseWithWasm(wasm, mhtml, DOMParser, context) {
 	try {
 		wasmResult = wasm.parse_mhtml(mhtml);
 	} catch (_) {
-		// WASM parse failed, fall back to JS
 		return modParseJS(mhtml, { DOMParser }, context);
 	}
 
 	const headers = wasmResult.headers || {};
+	const embeddedToProcess = [];
 
-	// Process each resource from WASM output
+	// Process resources and collect embedded MHTML in single pass
 	for (const [id, wasmResource] of Object.entries(wasmResult.resources || {})) {
-		if (resources[id]) {
-			continue;
-		}
-		const resource = {
-			id: wasmResource.id,
-			contentType: wasmResource.contentType,
-			transferEncoding: wasmResource.transferEncoding,
-			data: wasmResource.data,
-			rawData: wasmResource.data
-		};
-
-		// Apply JS-side processing (charset decoding, DOM processing)
-		processResource(resource, DOMParser);
-		resources[id] = resource;
-	}
-
-	// Process frames
-	for (const [id, wasmResource] of Object.entries(wasmResult.frames || {})) {
-		if (frames[id]) {
-			continue;
-		}
-		const resource = resources[wasmResource.id] || {
-			id: wasmResource.id,
-			contentType: wasmResource.contentType,
-			transferEncoding: wasmResource.transferEncoding,
-			data: wasmResource.data,
-			rawData: wasmResource.data
-		};
-		if (!resources[wasmResource.id]) {
+		if (!resources[id]) {
+			const resource = {
+				id: wasmResource.id,
+				contentType: wasmResource.contentType,
+				transferEncoding: wasmResource.transferEncoding,
+				data: wasmResource.data
+			};
 			processResource(resource, DOMParser);
-			resources[wasmResource.id] = resource;
+			resources[id] = resource;
 		}
-		frames[id] = resource;
+		if (wasmResource.used && wasmResource.data && wasmResource.data.length > 0) {
+			embeddedToProcess.push(wasmResource.data);
+		}
 	}
 
-	// Handle embedded MHTML (multipart/alternative resources marked as used)
-	for (const wasmResource of Object.values(wasmResult.resources || {})) {
-		if (wasmResource.used && wasmResource.data && wasmResource.data.length > 0) {
-			parse(wasmResource.data, { DOMParser }, context);
+	// Process frames — link to already-processed resources where possible
+	for (const [id, wasmResource] of Object.entries(wasmResult.frames || {})) {
+		if (!frames[id]) {
+			if (resources[wasmResource.id]) {
+				frames[id] = resources[wasmResource.id];
+			} else {
+				const resource = {
+					id: wasmResource.id,
+					contentType: wasmResource.contentType,
+					transferEncoding: wasmResource.transferEncoding,
+					data: wasmResource.data
+				};
+				processResource(resource, DOMParser);
+				resources[wasmResource.id] = resource;
+				frames[id] = resource;
+			}
 		}
+	}
+
+	// Handle embedded MHTML
+	for (const data of embeddedToProcess) {
+		parse(data, { DOMParser }, context);
 	}
 
 	if (wasmResult.index !== undefined && context.index === undefined) {
@@ -136,7 +124,6 @@ function parseWithWasm(wasm, mhtml, DOMParser, context) {
 
 function processResource(resource, DOMParser) {
 	const rawData = resource.data instanceof Uint8Array ? resource.data : new Uint8Array(resource.data);
-	resource.rawData = rawData;
 	const charset = resource.contentType ? getCharset(resource.contentType) : undefined;
 
 	if (resource.transferEncoding === BINARY_ENCODING && (!resource.contentType || !isText(resource.contentType))) {
@@ -149,22 +136,21 @@ function processResource(resource, DOMParser) {
 	if (resource.contentType) {
 		resource.contentType = replaceCharset(resource.contentType, UTF8_CHARSET);
 		if (isStylesheet(resource.contentType)) {
-			processStylesheetCharset(resource, charset);
+			processStylesheetCharset(resource, rawData, charset);
 		} else if (isDocument(resource.contentType)) {
-			processDocumentCharset(resource, charset, DOMParser);
+			processDocumentCharset(resource, rawData, charset, DOMParser);
 		}
 	}
-	delete resource.rawData;
 }
 
-function processStylesheetCharset(resource, charset) {
+function processStylesheetCharset(resource, rawData, charset) {
 	try {
 		let ast = cssTree.parse(resource.data);
 		if (ast.children.first && ast.children.first.type === AT_RULE && ast.children.first.name.toLowerCase() === CHARSET_IDENTIFIER) {
 			const charsetNode = ast.children.first;
 			const cssCharset = charsetNode.prelude.children.first.value.toLowerCase();
 			if (cssCharset !== UTF8_CHARSET && cssCharset !== charset) {
-				resource.data = decodeString(resource.rawData, cssCharset);
+				resource.data = decodeString(rawData, cssCharset);
 				ast = cssTree.parse(resource.data);
 			}
 			ast.children.remove(ast.children.head);
@@ -176,7 +162,7 @@ function processStylesheetCharset(resource, charset) {
 	}
 }
 
-function processDocumentCharset(resource, charset, DOMParser) {
+function processDocumentCharset(resource, rawData, charset, DOMParser) {
 	const contentType = resource.contentType.split(";")[0];
 	let dom = parseDOM(resource.data, contentType, DOMParser);
 	let charserMetaElement = getMetaCharsetElement(dom.document.documentElement);
@@ -185,7 +171,7 @@ function processDocumentCharset(resource, charset, DOMParser) {
 		if (htmlCharset) {
 			htmlCharset = htmlCharset.toLowerCase();
 			if (htmlCharset !== UTF8_CHARSET && htmlCharset !== charset) {
-				resource.data = decodeString(resource.rawData, charset);
+				resource.data = decodeString(rawData, charset);
 				dom = parseDOM(resource.data, contentType, DOMParser);
 				charserMetaElement = getMetaCharsetElement(dom.document.documentElement);
 			}
@@ -200,7 +186,7 @@ function processDocumentCharset(resource, charset, DOMParser) {
 		const metaContentType = metaElement.getAttribute(CONTENT_ATTRIBUTE);
 		const htmlCharset = getCharset(metaContentType);
 		if (htmlCharset && htmlCharset !== UTF8_CHARSET && htmlCharset !== charset) {
-			resource.data = decodeString(resource.rawData, htmlCharset);
+			resource.data = decodeString(rawData, htmlCharset);
 			dom = parseDOM(resource.data, contentType, DOMParser);
 			metaElement = getMetaContentTypeElement(dom.document.documentElement);
 		}

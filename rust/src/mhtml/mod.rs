@@ -11,7 +11,6 @@ const CONTENT_LOCATION_HEADER: &str = "content-location";
 const QUOTED_PRINTABLE_ENCODING: &str = "quoted-printable";
 const BASE64_ENCODING: &str = "base64";
 const BINARY_ENCODING: &str = "binary";
-const UTF8_CHARSET: &str = "utf-8";
 
 #[derive(PartialEq, Clone, Copy)]
 enum State {
@@ -85,7 +84,9 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
                     split_headers(&next, &mut content, &mut header_key);
                 }
             } else {
-                let (res, te) = init_resource(&result.headers.clone(), result);
+                // Extract needed header values before borrowing result mutably
+                let headers_snapshot = extract_resource_headers(&result.headers);
+                let (res, te) = init_resource_from_values(headers_snapshot, result);
                 transfer_encoding = te;
                 resource = Some(res);
                 state = State::MhtmlData;
@@ -103,14 +104,7 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
             if let (Some(start), Some(end)) = (index_start_embedded, index_end_data) {
                 res.used = true;
                 // Store the resource, then handle embedded MHTML
-                let res_id = res.id.clone();
-                let res_clone = res.clone();
-                if let Some(content_id) = content.get(CONTENT_ID_HEADER) {
-                    result.frames.insert(content_id.clone(), res_clone.clone());
-                }
-                if !result.resources.contains_key(&res_id) {
-                    result.resources.insert(res_id, res_clone);
-                }
+                store_resource(res, &content, result);
                 // Parse embedded MHTML
                 let mut end_adj = end;
                 if ends_with_crlf(mhtml) {
@@ -122,16 +116,8 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
                     parse(&mhtml[start..end_adj], result);
                 }
             } else {
-                // Process the resource (convert data, apply encodings)
                 process_resource(res);
-                let res_clone = res.clone();
-                let res_id = res.id.clone();
-                if let Some(content_id) = content.get(CONTENT_ID_HEADER) {
-                    result.frames.insert(content_id.clone(), res_clone.clone());
-                }
-                if !result.resources.contains_key(&res_id) {
-                    result.resources.insert(res_id, res_clone);
-                }
+                store_resource(res, &content, result);
             }
 
             content.clear();
@@ -142,6 +128,21 @@ pub fn parse(mhtml: &[u8], result: &mut ParseResult) {
                 State::MhtmlContent
             };
         }
+    }
+}
+
+/// Store a resource into result.resources and result.frames.
+fn store_resource(
+    res: &MhtmlResource,
+    content: &std::collections::HashMap<String, String>,
+    result: &mut ParseResult,
+) {
+    let res_clone = res.clone();
+    if let Some(content_id) = content.get(CONTENT_ID_HEADER) {
+        result.frames.insert(content_id.clone(), res_clone.clone());
+    }
+    if !result.resources.contains_key(&res.id) {
+        result.resources.insert(res.id.clone(), res_clone);
     }
 }
 
@@ -180,23 +181,41 @@ fn split_headers(
     }
 }
 
+/// Extracted header values needed by init_resource, to avoid cloning the whole HashMap.
+struct ResourceHeaders {
+    transfer_encoding: Option<String>,
+    content_type: Option<String>,
+    content_id: Option<String>,
+    content_location: Option<String>,
+}
+
+fn extract_resource_headers(headers: &std::collections::HashMap<String, String>) -> ResourceHeaders {
+    ResourceHeaders {
+        transfer_encoding: headers.get(CONTENT_TRANSFER_ENCODING_HEADER).cloned(),
+        content_type: headers.get(CONTENT_TYPE_HEADER).cloned(),
+        content_id: headers.get(CONTENT_ID_HEADER).cloned(),
+        content_location: headers.get(CONTENT_LOCATION_HEADER).cloned(),
+    }
+}
+
 fn init_resource(
     headers: &std::collections::HashMap<String, String>,
     result: &mut ParseResult,
 ) -> (MhtmlResource, Option<String>) {
-    let transfer_encoding = headers
-        .get(CONTENT_TRANSFER_ENCODING_HEADER)
-        .map(|s| s.to_lowercase());
-    let content_type = headers.get(CONTENT_TYPE_HEADER).cloned();
-    let content_id = headers.get(CONTENT_ID_HEADER).cloned();
-    let content_location = headers.get(CONTENT_LOCATION_HEADER).cloned();
+    init_resource_from_values(extract_resource_headers(headers), result)
+}
 
-    let id = if let Some(loc) = content_location {
+fn init_resource_from_values(
+    headers: ResourceHeaders,
+    result: &mut ParseResult,
+) -> (MhtmlResource, Option<String>) {
+    let transfer_encoding = headers.transfer_encoding.map(|s| s.to_lowercase());
+
+    let id = if let Some(loc) = headers.content_location {
         loc
-    } else if let Some(ref cid) = content_id {
+    } else if let Some(ref cid) = headers.content_id {
         cid.clone()
     } else {
-        // Generate random ID matching JS behavior
         let mut id;
         loop {
             id = format!("_{:x}", js_random_u64());
@@ -208,7 +227,7 @@ fn init_resource(
     };
 
     if result.index.is_none() {
-        if let Some(ref ct) = content_type {
+        if let Some(ref ct) = headers.content_type {
             if is_document(ct) {
                 result.index = Some(id.clone());
             }
@@ -216,25 +235,17 @@ fn init_resource(
     }
 
     let resource = MhtmlResource {
-        id: id.clone(),
-        content_type,
+        id,
+        content_type: headers.content_type,
         transfer_encoding: transfer_encoding.clone(),
         data: Vec::new(),
         used: false,
     };
 
-    if let Some(ref cid) = content_id {
-        result.frames.insert(cid.clone(), resource.clone());
-    }
-    if !result.resources.contains_key(&id) {
-        result.resources.insert(id, resource.clone());
-    }
-
     (resource, transfer_encoding)
 }
 
 /// Simple pseudo-random number for generating IDs.
-/// Uses a basic xorshift since we just need uniqueness, not cryptographic randomness.
 fn js_random_u64() -> u64 {
     use std::cell::Cell;
     thread_local! {
@@ -330,5 +341,4 @@ fn process_resource(resource: &mut MhtmlResource) {
             resource.data = encoded.into_bytes();
         }
     }
-    // charset decoding is handled in JS since it needs TextDecoder with charset support
 }
