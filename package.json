@@ -8,7 +8,10 @@
 		"dev": "npx rollup -c rollup.config.dev.js",
 		"build": "./build-extension.sh",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"test:docker": "docker build -f test/Dockerfile -t singlefile-test . && docker run --rm singlefile-test",
+		"bench": "vitest bench",
+		"bench:docker": "docker build -f test/Dockerfile -t singlefile-test . && docker run --rm singlefile-test npx vitest bench"
 	},
 	"type": "module",
 	"dependencies": {
